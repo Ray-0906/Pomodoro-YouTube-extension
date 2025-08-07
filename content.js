@@ -1,4 +1,4 @@
-// content.js - FINAL FIX with break end choice and proper popup display
+// content.js - ULTIMATE FIX: Auto-start control + Better minimize
 
 class YouTubePomodoroTimer {
   constructor() {
@@ -13,15 +13,26 @@ class YouTubePomodoroTimer {
     this.autoStartEnabled = true;
     this.isTimerControlledPause = false;
     this.hasStartedInitialTimer = false;
-    this.breakEndNotification = null; // NEW: Track break end notification
+    this.breakEndNotification = null;
 
-    console.log('🍅 YouTubePomodoroTimer: Final version with break choice...');
+    // NEW: User preference tracking
+    this.userHasCancelled = false; // Track if user cancelled auto-start
+    this.userHasStopped = false; // Track if user stopped session
+    this.sessionWasManuallyStarted = false; // Track if session was manually started
+
+    // NEW: Minimize state
+    this.isMinimized = false;
+    this.miniOverlay = null;
+
+    console.log(
+      "🍅 YouTubePomodoroTimer: Ultimate version with smart auto-start..."
+    );
     this.init();
   }
 
   async init() {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => this.setup());
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => this.setup());
     } else {
       await this.setup();
     }
@@ -29,7 +40,7 @@ class YouTubePomodoroTimer {
 
   async setup() {
     try {
-      console.log('🍅 Setting up with break end choice logic...');
+      console.log("🍅 Setting up with page refresh handling...");
 
       this.lectureDetector = new LectureDetector();
       this.videoController = new VideoController();
@@ -37,85 +48,185 @@ class YouTubePomodoroTimer {
       await this.waitForVideo();
       await this.syncTimerState();
 
+      // NEW: Handle page refresh scenario
+      await this.handlePageRefresh();
+
       chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         this.handleMessage(message, sender, sendResponse);
       });
 
       this.setupNavigationListener();
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       await this.detectLectureContent();
 
       this.isInitialized = true;
-      console.log('✅ YouTube Pomodoro Timer initialized with break end choice');
-
+      console.log(
+        "✅ YouTube Pomodoro Timer initialized with page refresh handling"
+      );
     } catch (error) {
-      console.error('❌ Error setting up:', error);
+      console.error("❌ Error setting up:", error);
+    }
+  }
+
+  // NEW: Add this method to handle page refresh scenarios
+  async handlePageRefresh() {
+    try {
+      console.log("🔄 Checking for page refresh scenario...");
+
+      if (this.timerState?.isActive) {
+        console.log("⏱️ Active timer detected on page load:", {
+          mode: this.timerState.mode,
+          isPaused: this.timerState.isPaused,
+          remainingTime: Math.floor(this.timerState.remainingTime / 1000) + "s",
+        });
+
+        // Show overlay in current state
+        this.showOverlay(this.timerState.mode);
+
+        // Wait for video to be fully ready
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        if (this.video) {
+          const videoPlaying = !this.video.paused;
+          const timerPaused = this.timerState.isPaused;
+
+          console.log(
+            `📊 Refresh sync check: Video=${
+              videoPlaying ? "playing" : "paused"
+            }, Timer=${timerPaused ? "paused" : "running"}`
+          );
+
+          // Case 1: Video playing but timer paused → Resume timer
+          if (videoPlaying && timerPaused) {
+            console.log(
+              "🔄 Page refresh detected: Video playing but timer paused - resuming timer"
+            );
+            await chrome.runtime.sendMessage({ type: "RESUME_TIMER" });
+            await this.syncTimerState();
+            console.log("✅ Timer resumed after page refresh");
+          }
+          // Case 2: Video paused but timer running → Pause timer
+          else if (!videoPlaying && !timerPaused) {
+            console.log(
+              "🔄 Page refresh detected: Video paused but timer running - pausing timer"
+            );
+            await chrome.runtime.sendMessage({ type: "PAUSE_TIMER" });
+            await this.syncTimerState();
+            console.log("✅ Timer paused after page refresh");
+          }
+          // Case 3: States already match
+          else {
+            console.log(
+              "✅ Timer-video sync already correct after page refresh"
+            );
+          }
+        }
+
+        // Mark that we have a timer to prevent auto-start
+        this.hasStartedInitialTimer = true;
+      } else {
+        console.log("ℹ️ No active timer on page load");
+      }
+    } catch (error) {
+      console.error("❌ Error handling page refresh:", error);
     }
   }
 
   async syncTimerState() {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_TIMER_STATE' });
+      const response = await chrome.runtime.sendMessage({
+        type: "GET_TIMER_STATE",
+      });
       this.timerState = response;
 
       if (this.timerState?.isActive) {
-        console.log('📊 Synced active timer state:', this.timerState);
+        console.log("📊 Synced active timer state:", this.timerState);
         this.showOverlay(this.timerState.mode);
 
-        if (this.timerState.mode === 'work') {
+        if (this.timerState.mode === "work") {
           this.hasStartedInitialTimer = true;
         }
       }
     } catch (error) {
-      console.error('❌ Error syncing timer state:', error);
+      console.error("❌ Error syncing timer state:", error);
     }
   }
 
   async waitForVideo() {
-    console.log('🎥 Waiting for video element...');
+    console.log("🎥 Waiting for video element...");
 
     return new Promise((resolve) => {
       const checkForVideo = () => {
-        this.video = document.querySelector('video');
+        this.video = document.querySelector("video");
 
         if (this.video) {
-          console.log('✅ Video element found');
+          console.log("✅ Video element found");
 
-          this.video.addEventListener('play', async (e) => {
-            console.log('▶️ Video play event detected');
+          this.video.addEventListener("play", async (e) => {
+            console.log("▶️ Video play event detected");
 
             await this.syncTimerState();
 
-            if (this.isLecture && !this.timerState?.isActive && !this.hasStartedInitialTimer) {
-              console.log('🎯 First-time auto-start: Video playing + lecture detected + no active timer');
+            // ENHANCED: Check if this is a resume after page refresh
+            if (
+              this.timerState?.isActive &&
+              this.timerState?.isPaused &&
+              !this.isTimerControlledPause
+            ) {
+              console.log(
+                "🔄 Video resumed after page refresh/pause - resuming timer"
+              );
+              await chrome.runtime.sendMessage({ type: "RESUME_TIMER" });
+              return;
+            }
+
+            // Original smart auto-start logic
+            const shouldAutoStart =
+              this.isLecture &&
+              !this.timerState?.isActive &&
+              !this.hasStartedInitialTimer &&
+              !this.userHasCancelled &&
+              !this.userHasStopped;
+
+            if (shouldAutoStart) {
+              console.log("🎯 Smart auto-start: All conditions met");
               this.hasStartedInitialTimer = true;
               setTimeout(() => {
                 this.startWorkTimer();
               }, 1000);
-            } 
-            else if (this.timerState?.isActive && this.timerState?.isPaused) {
-              console.log('▶️ Resuming paused timer (not starting new!)');
-              await chrome.runtime.sendMessage({ type: 'RESUME_TIMER' });
-            }
-            else if (this.timerState?.isActive && !this.timerState?.isPaused) {
-              console.log('ℹ️ Timer already running, no action needed');
-            }
-            else {
-              console.log('ℹ️ Video play event, but conditions not met for timer action');
+            } else if (this.timerState?.isActive && this.timerState?.isPaused) {
+              console.log("▶️ Resuming paused timer (not starting new!)");
+              await chrome.runtime.sendMessage({ type: "RESUME_TIMER" });
+            } else if (
+              this.timerState?.isActive &&
+              !this.timerState?.isPaused
+            ) {
+              console.log("ℹ️ Timer already running, no action needed");
+            } else {
+              console.log(
+                "ℹ️ Video play event, but conditions not met for timer action"
+              );
+              console.log("   - isLecture:", this.isLecture);
+              console.log("   - timerActive:", !!this.timerState?.isActive);
+              console.log("   - hasStarted:", this.hasStartedInitialTimer);
+              console.log("   - userCancelled:", this.userHasCancelled);
+              console.log("   - userStopped:", this.userHasStopped);
             }
           });
 
-          this.video.addEventListener('pause', async (e) => {
-            console.log('⏸️ Video pause event detected');
+          this.video.addEventListener("pause", async (e) => {
+            console.log("⏸️ Video pause event detected");
 
             await this.syncTimerState();
 
-            if (!this.isTimerControlledPause && this.timerState?.isActive && !this.timerState?.isPaused) {
-              console.log('⏸️ Manual pause detected - pausing timer');
-              await chrome.runtime.sendMessage({ type: 'PAUSE_TIMER' });
-            } else if (this.isTimerControlledPause) {
-              console.log('⏸️ Timer-controlled pause (expected)');
+            if (
+              !this.isTimerControlledPause &&
+              this.timerState?.isActive &&
+              !this.timerState?.isPaused
+            ) {
+              console.log("⏸️ Manual pause detected - pausing timer");
+              await chrome.runtime.sendMessage({ type: "PAUSE_TIMER" });
             }
 
             this.isTimerControlledPause = false;
@@ -133,10 +244,10 @@ class YouTubePomodoroTimer {
 
   async detectLectureContent() {
     try {
-      console.log('🎓 Starting lecture detection...');
+      console.log("🎓 Starting lecture detection...");
 
       if (!this.lectureDetector) {
-        console.warn('⚠️ LectureDetector not available');
+        console.warn("⚠️ LectureDetector not available");
         return;
       }
 
@@ -147,7 +258,7 @@ class YouTubePomodoroTimer {
       while (attempts < maxAttempts && (!detection || detection.score === 0)) {
         if (attempts > 0) {
           console.log(`🔄 Lecture detection attempt ${attempts + 1}...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         }
 
         detection = this.lectureDetector.detectLecture();
@@ -158,34 +269,42 @@ class YouTubePomodoroTimer {
 
       this.isLecture = detection.isLecture;
 
-      console.log('🎓 LECTURE DETECTION COMPLETE:');
-      console.log(`   📊 Score: ${detection.score} (threshold: ${detection.threshold})`);
-      console.log(`   📚 Is Lecture: ${this.isLecture ? 'YES' : 'NO'}`);
+      console.log("🎓 LECTURE DETECTION COMPLETE:");
+      console.log(
+        `   📊 Score: ${detection.score} (threshold: ${detection.threshold})`
+      );
+      console.log(`   📚 Is Lecture: ${this.isLecture ? "YES" : "NO"}`);
 
       await chrome.runtime.sendMessage({
-        type: 'LECTURE_DETECTED',
+        type: "LECTURE_DETECTED",
         isLecture: this.isLecture,
         score: detection.score,
         title: detection.title,
-        factors: detection.factors
+        factors: detection.factors,
       });
 
-      if (this.isLecture && !this.hasShownNotification && !this.timerState?.isActive) {
+      // Only show notification if conditions are right
+      if (
+        this.isLecture &&
+        !this.hasShownNotification &&
+        !this.timerState?.isActive &&
+        !this.userHasCancelled &&
+        !this.userHasStopped
+      ) {
         this.showLectureDetectedNotification();
       }
-
     } catch (error) {
-      console.error('❌ Error in lecture detection:', error);
+      console.error("❌ Error in lecture detection:", error);
     }
   }
 
   showLectureDetectedNotification() {
     if (this.hasShownNotification) return;
 
-    console.log('📚 Showing lecture notification with countdown...');
+    console.log("📚 Showing lecture notification with countdown...");
 
-    const notification = document.createElement('div');
-    notification.id = 'pomodoro-lecture-notification';
+    const notification = document.createElement("div");
+    notification.id = "pomodoro-lecture-notification";
     notification.innerHTML = `
       <div class="notification-content">
         <div class="notification-header">
@@ -207,15 +326,15 @@ class YouTubePomodoroTimer {
     this.hasShownNotification = true;
 
     let countdown = 5;
-    const countdownEl = document.getElementById('countdown');
+    const countdownEl = document.getElementById("countdown");
     const countdownInterval = setInterval(() => {
       countdown--;
       if (countdownEl) countdownEl.textContent = countdown;
 
       if (countdown <= 0) {
         clearInterval(countdownInterval);
-        if (document.getElementById('pomodoro-lecture-notification')) {
-          console.log('⏰ Auto-start countdown finished');
+        if (document.getElementById("pomodoro-lecture-notification")) {
+          console.log("⏰ Auto-start countdown finished");
           this.hasStartedInitialTimer = true;
           this.startWorkTimer();
           notification.remove();
@@ -223,36 +342,43 @@ class YouTubePomodoroTimer {
       }
     }, 1000);
 
-    document.getElementById('start-now-btn')?.addEventListener('click', () => {
+    document.getElementById("start-now-btn")?.addEventListener("click", () => {
       clearInterval(countdownInterval);
+      console.log("🚀 User manually started session");
       this.hasStartedInitialTimer = true;
+      this.sessionWasManuallyStarted = true;
       this.startWorkTimer();
       notification.remove();
     });
 
-    document.getElementById('cancel-auto-btn')?.addEventListener('click', () => {
-      clearInterval(countdownInterval);
-      this.autoStartEnabled = false;
-      notification.remove();
-    });
+    // FIXED: Track user cancellation
+    document
+      .getElementById("cancel-auto-btn")
+      ?.addEventListener("click", () => {
+        clearInterval(countdownInterval);
+        console.log("🚫 User cancelled auto-start - disabling for this video");
+        this.userHasCancelled = true; // Disable auto-start for this video
+        this.autoStartEnabled = false;
+        notification.remove();
+      });
 
-    document.getElementById('dismiss-btn')?.addEventListener('click', () => {
+    document.getElementById("dismiss-btn")?.addEventListener("click", () => {
       clearInterval(countdownInterval);
+      console.log("❌ User dismissed notification - disabling auto-start");
+      this.userHasCancelled = true;
       notification.remove();
     });
   }
 
-  // NEW: Show break end choice notification
   showBreakEndChoice() {
-    console.log('☕ Showing break end choice notification...');
+    console.log("☕ Showing break end choice notification...");
 
-    // Remove any existing break notification
     if (this.breakEndNotification) {
       this.breakEndNotification.remove();
     }
 
-    this.breakEndNotification = document.createElement('div');
-    this.breakEndNotification.id = 'pomodoro-break-end-notification';
+    this.breakEndNotification = document.createElement("div");
+    this.breakEndNotification.id = "pomodoro-break-end-notification";
     this.breakEndNotification.innerHTML = `
       <div class="break-end-content">
         <div class="break-end-header">
@@ -274,35 +400,41 @@ class YouTubePomodoroTimer {
     this.injectCSS();
     document.body.appendChild(this.breakEndNotification);
 
-    // 15-second countdown
     let countdown = 15;
-    const countdownEl = document.getElementById('break-countdown');
+    const countdownEl = document.getElementById("break-countdown");
     const countdownInterval = setInterval(() => {
       countdown--;
       if (countdownEl) countdownEl.textContent = countdown;
 
       if (countdown <= 0) {
         clearInterval(countdownInterval);
-        console.log('⏰ Break end countdown finished - auto-starting new session');
+        console.log(
+          "⏰ Break end countdown finished - auto-starting new session"
+        );
         this.startNewSessionAfterBreak();
         this.removeBreakEndNotification();
       }
     }, 1000);
 
-    // Event listeners
-    document.getElementById('start-new-session-btn')?.addEventListener('click', () => {
-      clearInterval(countdownInterval);
-      console.log('🎯 User chose to start new session');
-      this.startNewSessionAfterBreak();
-      this.removeBreakEndNotification();
-    });
+    document
+      .getElementById("start-new-session-btn")
+      ?.addEventListener("click", () => {
+        clearInterval(countdownInterval);
+        console.log("🎯 User chose to start new session");
+        this.startNewSessionAfterBreak();
+        this.removeBreakEndNotification();
+      });
 
-    document.getElementById('stop-pomodoro-btn')?.addEventListener('click', () => {
-      clearInterval(countdownInterval);
-      console.log('⏹ User chose to stop pomodoro');
-      this.stopPomodoroSessions();
-      this.removeBreakEndNotification();
-    });
+    // FIXED: Track user stop decision
+    document
+      .getElementById("stop-pomodoro-btn")
+      ?.addEventListener("click", () => {
+        clearInterval(countdownInterval);
+        console.log("⏹ User chose to stop pomodoro - setting stop flag");
+        this.userHasStopped = true; // Disable auto-start for this video
+        this.stopPomodoroSessions();
+        this.removeBreakEndNotification();
+      });
   }
 
   removeBreakEndNotification() {
@@ -312,33 +444,27 @@ class YouTubePomodoroTimer {
     }
   }
 
-  // NEW: Start new session after break
   startNewSessionAfterBreak() {
-    console.log('🎯 Starting new session after break...');
+    console.log("🎯 Starting new session after break...");
     this.resumeVideo();
     this.hideOverlay();
 
-    // Small delay before starting new timer
     setTimeout(() => {
       this.startWorkTimer();
     }, 1000);
   }
 
-  // NEW: Stop all pomodoro sessions
   stopPomodoroSessions() {
-    console.log('⏹ Stopping all pomodoro sessions...');
-    chrome.runtime.sendMessage({ type: 'STOP_TIMER' });
+    console.log("⏹ Stopping all pomodoro sessions...");
+    chrome.runtime.sendMessage({ type: "STOP_TIMER" });
     this.hideOverlay();
     this.hasStartedInitialTimer = false;
-
-    // Show completion message
     this.showCompletionMessage();
   }
 
-  // NEW: Show completion message
   showCompletionMessage() {
-    const completionMsg = document.createElement('div');
-    completionMsg.id = 'pomodoro-completion-message';
+    const completionMsg = document.createElement("div");
+    completionMsg.id = "pomodoro-completion-message";
     completionMsg.innerHTML = `
       <div class="completion-content">
         <div class="completion-header">
@@ -354,7 +480,6 @@ class YouTubePomodoroTimer {
     this.injectCSS();
     document.body.appendChild(completionMsg);
 
-    // Auto-remove after 5 seconds
     setTimeout(() => {
       if (completionMsg.parentNode) {
         completionMsg.remove();
@@ -363,46 +488,53 @@ class YouTubePomodoroTimer {
   }
 
   startWorkTimer() {
-    console.log('🎯 startWorkTimer called');
+    console.log("🎯 startWorkTimer called");
 
     if (this.timerState?.isActive) {
-      console.log('⚠️ Timer already active, not starting new one');
+      console.log("⚠️ Timer already active, not starting new one");
       return;
     }
 
-    console.log('📤 Sending START_WORK_TIMER message...');
+    console.log("📤 Sending START_WORK_TIMER message...");
 
-    chrome.runtime.sendMessage({ type: 'START_WORK_TIMER' }).then(async response => {
-      if (response?.success) {
-        console.log('✅ Work timer started successfully');
-        await this.syncTimerState();
-        this.showOverlay('work');
-      } else {
-        console.error('❌ Failed to start timer:', response);
-      }
-    }).catch(error => {
-      console.error('❌ Error starting timer:', error);
-    });
+    chrome.runtime
+      .sendMessage({ type: "START_WORK_TIMER" })
+      .then(async (response) => {
+        if (response?.success) {
+          console.log("✅ Work timer started successfully");
+          await this.syncTimerState();
+          this.showOverlay("work");
+        } else {
+          console.error("❌ Failed to start timer:", response);
+        }
+      })
+      .catch((error) => {
+        console.error("❌ Error starting timer:", error);
+      });
   }
 
   showOverlay(mode) {
     console.log(`🎯 Showing ${mode} overlay`);
 
     if (this.overlay) this.overlay.remove();
+    if (this.miniOverlay) this.miniOverlay.remove();
 
-    this.overlay = document.createElement('div');
-    this.overlay.id = 'pomodoro-overlay';
+    this.overlay = document.createElement("div");
+    this.overlay.id = "pomodoro-overlay";
     this.overlay.className = `pomodoro-overlay pomodoro-${mode}`;
 
-    // Get duration from timer state or default
-    let duration = mode === 'work' ? '20:00' : '05:00';
+    let duration = mode === "work" ? "20:00" : "05:00";
     if (this.timerState?.remainingTime) {
       const minutes = Math.floor(this.timerState.remainingTime / 60000);
-      const seconds = Math.floor((this.timerState.remainingTime % 60000) / 1000);
-      duration = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      const seconds = Math.floor(
+        (this.timerState.remainingTime % 60000) / 1000
+      );
+      duration = `${minutes.toString().padStart(2, "0")}:${seconds
+        .toString()
+        .padStart(2, "0")}`;
     }
 
-    const modeText = mode === 'work' ? '🎯 Focus Time' : '☕ Break Time';
+    const modeText = mode === "work" ? "🎯 Focus Time" : "☕ Break Time";
 
     this.overlay.innerHTML = `
       <div class="timer-display">
@@ -413,17 +545,27 @@ class YouTubePomodoroTimer {
             <div class="progress-fill"></div>
           </div>
         </div>
-        ${mode === 'work' ? '<div class="session-info">Stay focused! 💪</div>' : ''}
-        ${mode === 'break' ? `
+        ${
+          mode === "work"
+            ? '<div class="session-info">Stay focused! 💪</div>'
+            : ""
+        }
+        ${
+          mode === "break"
+            ? `
           <div class="break-actions">
             <div class="break-message">Enjoy your break! 🧘‍♀️</div>
             <div class="break-info">Next session will start automatically after break</div>
           </div>
-        ` : ''}
+        `
+            : ""
+        }
         <div class="overlay-controls">
           <button id="minimize-btn" class="control-btn" title="Minimize">−</button>
           <button id="move-btn" class="control-btn" title="Move Position">⋯</button>
-          <button id="pause-resume-btn" class="control-btn" title="Pause/Resume">${this.timerState?.isPaused ? '▶️' : '⏸️'}</button>
+          <button id="pause-resume-btn" class="control-btn" title="Pause/Resume">${
+            this.timerState?.isPaused ? "▶️" : "⏸️"
+          }</button>
           <button id="stop-timer-btn" class="control-btn stop-btn" title="Stop Session">⏹</button>
         </div>
       </div>
@@ -432,35 +574,87 @@ class YouTubePomodoroTimer {
     this.injectCSS();
     document.body.appendChild(this.overlay);
     this.setupOverlayControls(mode);
+    this.isMinimized = false;
 
-    console.log('✅ Overlay displayed with current timer state');
+    console.log("✅ Overlay displayed with current timer state");
+  }
+
+  // NEW: Show minimized timer
+  showMiniOverlay(mode) {
+    console.log("📱 Showing mini overlay");
+
+    if (this.overlay) this.overlay.remove();
+    if (this.miniOverlay) this.miniOverlay.remove();
+
+    let duration = mode === "work" ? "20:00" : "05:00";
+    if (this.timerState?.remainingTime) {
+      const minutes = Math.floor(this.timerState.remainingTime / 60000);
+      const seconds = Math.floor(
+        (this.timerState.remainingTime % 60000) / 1000
+      );
+      duration = `${minutes.toString().padStart(2, "0")}:${seconds
+        .toString()
+        .padStart(2, "0")}`;
+    }
+
+    this.miniOverlay = document.createElement("div");
+    this.miniOverlay.id = "pomodoro-mini-overlay";
+    this.miniOverlay.className = `pomodoro-mini-overlay pomodoro-mini-${mode}`;
+    this.miniOverlay.innerHTML = `
+      <div class="mini-timer-content">
+        <div class="mini-mode-icon">${mode === "work" ? "🎯" : "☕"}</div>
+        <div class="mini-time">${duration}</div>
+        <div class="mini-progress">
+          <div class="mini-progress-fill"></div>
+        </div>
+      </div>
+    `;
+
+    this.injectCSS();
+    document.body.appendChild(this.miniOverlay);
+    this.isMinimized = true;
+
+    // Click to expand
+    this.miniOverlay.addEventListener("click", () => {
+      console.log("📱 Mini overlay clicked - expanding");
+      this.showOverlay(mode);
+    });
+
+    console.log("✅ Mini overlay displayed");
   }
 
   setupOverlayControls(mode) {
-    document.getElementById('minimize-btn')?.addEventListener('click', () => {
-      this.overlay.classList.toggle('minimized');
+    // FIXED: Minimize button behavior
+    document.getElementById("minimize-btn")?.addEventListener("click", () => {
+      console.log("📱 Minimize button clicked");
+      this.showMiniOverlay(mode);
     });
 
-    document.getElementById('move-btn')?.addEventListener('click', () => {
+    document.getElementById("move-btn")?.addEventListener("click", () => {
       this.cycleOverlayPosition();
     });
 
-    document.getElementById('pause-resume-btn')?.addEventListener('click', async () => {
-      if (this.timerState?.isPaused) {
-        await chrome.runtime.sendMessage({ type: 'RESUME_TIMER' });
-      } else {
-        await chrome.runtime.sendMessage({ type: 'PAUSE_TIMER' });
-      }
-      setTimeout(async () => {
-        await this.syncTimerState();
-        const btn = document.getElementById('pause-resume-btn');
-        if (btn) btn.textContent = this.timerState?.isPaused ? '▶️' : '⏸️';
-      }, 100);
-    });
+    document
+      .getElementById("pause-resume-btn")
+      ?.addEventListener("click", async () => {
+        if (this.timerState?.isPaused) {
+          await chrome.runtime.sendMessage({ type: "RESUME_TIMER" });
+        } else {
+          await chrome.runtime.sendMessage({ type: "PAUSE_TIMER" });
+        }
+        setTimeout(async () => {
+          await this.syncTimerState();
+          const btn = document.getElementById("pause-resume-btn");
+          if (btn) btn.textContent = this.timerState?.isPaused ? "▶️" : "⏸️";
+        }, 100);
+      });
 
-    document.getElementById('stop-timer-btn')?.addEventListener('click', () => {
-      if (confirm('Stop current session?')) {
-        chrome.runtime.sendMessage({ type: 'STOP_TIMER' });
+    // FIXED: Stop button sets user preference
+    document.getElementById("stop-timer-btn")?.addEventListener("click", () => {
+      if (confirm("Stop current session?")) {
+        console.log("⏹ User manually stopped session - setting stop flag");
+        this.userHasStopped = true; // Disable auto-start
+        chrome.runtime.sendMessage({ type: "STOP_TIMER" });
         this.hideOverlay();
         this.hasStartedInitialTimer = false;
       }
@@ -469,58 +663,98 @@ class YouTubePomodoroTimer {
 
   cycleOverlayPosition() {
     const positions = [
-      { top: '20px', right: '20px', bottom: 'auto', left: 'auto' },
-      { top: '20px', right: 'auto', bottom: 'auto', left: '20px' },
-      { top: 'auto', right: '20px', bottom: '20px', left: 'auto' },
-      { top: 'auto', right: 'auto', bottom: '20px', left: '20px' },
-      { top: '50%', right: 'auto', bottom: 'auto', left: '20px', transform: 'translateY(-50%)' }
+      { top: "20px", right: "20px", bottom: "auto", left: "auto" },
+      { top: "20px", right: "auto", bottom: "auto", left: "20px" },
+      { top: "auto", right: "20px", bottom: "20px", left: "auto" },
+      { top: "auto", right: "auto", bottom: "20px", left: "20px" },
+      {
+        top: "50%",
+        right: "auto",
+        bottom: "auto",
+        left: "20px",
+        transform: "translateY(-50%)",
+      },
     ];
 
-    const currentPos = this.overlay.getAttribute('data-position') || '0';
+    const currentPos = this.overlay.getAttribute("data-position") || "0";
     const nextPos = (parseInt(currentPos) + 1) % positions.length;
 
     const pos = positions[nextPos];
     Object.assign(this.overlay.style, pos);
-    this.overlay.setAttribute('data-position', nextPos);
+    this.overlay.setAttribute("data-position", nextPos);
 
     console.log(`📍 Overlay moved to position ${nextPos + 1}`);
   }
 
   updateOverlay(remainingMs, mode, sessionCount = 0, isPaused = false) {
-    if (!this.overlay) return;
-
     const minutes = Math.floor(remainingMs / 60000);
     const seconds = Math.floor((remainingMs % 60000) / 1000);
-    const timeDisplay = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const timeDisplay = `${minutes.toString().padStart(2, "0")}:${seconds
+      .toString()
+      .padStart(2, "0")}`;
 
-    const timeElement = this.overlay.querySelector('.time-remaining');
-    if (timeElement) {
-      timeElement.textContent = timeDisplay;
-      timeElement.style.opacity = isPaused ? '0.6' : '1';
+    // Update full overlay if visible
+    if (this.overlay) {
+      const timeElement = this.overlay.querySelector(".time-remaining");
+      if (timeElement) {
+        timeElement.textContent = timeDisplay;
+        timeElement.style.opacity = isPaused ? "0.6" : "1";
+      }
+
+      const pauseBtn = this.overlay.querySelector("#pause-resume-btn");
+      if (pauseBtn) {
+        pauseBtn.textContent = isPaused ? "▶️" : "⏸️";
+      }
+
+      // Update progress
+      const workDuration = 20 * 60 * 1000;
+      const breakDuration = 5 * 60 * 1000;
+      const totalDuration = mode === "work" ? workDuration : breakDuration;
+      const progress = ((totalDuration - remainingMs) / totalDuration) * 100;
+
+      const progressFill = this.overlay.querySelector(".progress-fill");
+      if (progressFill) {
+        progressFill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+      }
+
+      if (mode === "work" && sessionCount > 0) {
+        const sessionInfo = this.overlay.querySelector(".session-info");
+        if (sessionInfo) {
+          const status = isPaused ? "⏸️ Paused" : "💪 Stay focused!";
+          sessionInfo.textContent = `Session ${sessionCount} - ${status}`;
+        }
+      }
     }
 
-    const pauseBtn = this.overlay.querySelector('#pause-resume-btn');
-    if (pauseBtn) {
-      pauseBtn.textContent = isPaused ? '▶️' : '⏸️';
-      pauseBtn.title = isPaused ? 'Resume Timer' : 'Pause Timer';
-    }
+    // NEW: Update mini overlay if visible
+    if (this.miniOverlay) {
+      const miniTimeEl = this.miniOverlay.querySelector(".mini-time");
+      if (miniTimeEl) {
+        miniTimeEl.textContent = timeDisplay;
+        miniTimeEl.style.opacity = isPaused ? "0.6" : "1";
+      }
 
-    // Update progress
-    const workDuration = 20 * 60 * 1000; // Should come from settings
-    const breakDuration = 5 * 60 * 1000;
-    const totalDuration = mode === 'work' ? workDuration : breakDuration;
-    const progress = ((totalDuration - remainingMs) / totalDuration) * 100;
+      // Update mini progress
+      const workDuration = 20 * 60 * 1000;
+      const breakDuration = 5 * 60 * 1000;
+      const totalDuration = mode === "work" ? workDuration : breakDuration;
+      const progress = ((totalDuration - remainingMs) / totalDuration) * 100;
 
-    const progressFill = this.overlay.querySelector('.progress-fill');
-    if (progressFill) {
-      progressFill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
-    }
+      const miniProgressFill = this.miniOverlay.querySelector(
+        ".mini-progress-fill"
+      );
+      if (miniProgressFill) {
+        miniProgressFill.style.width = `${Math.max(
+          0,
+          Math.min(100, progress)
+        )}%`;
+      }
 
-    if (mode === 'work' && sessionCount > 0) {
-      const sessionInfo = this.overlay.querySelector('.session-info');
-      if (sessionInfo) {
-        const status = isPaused ? '⏸️ Paused' : '💪 Stay focused!';
-        sessionInfo.textContent = `Session ${sessionCount} - ${status}`;
+      // Add pause visual indicator
+      if (isPaused) {
+        this.miniOverlay.classList.add("paused");
+      } else {
+        this.miniOverlay.classList.remove("paused");
       }
     }
   }
@@ -530,10 +764,15 @@ class YouTubePomodoroTimer {
       this.overlay.remove();
       this.overlay = null;
     }
+    if (this.miniOverlay) {
+      this.miniOverlay.remove();
+      this.miniOverlay = null;
+    }
+    this.isMinimized = false;
   }
 
   pauseVideo() {
-    console.log('⏸️ Pausing video (timer-controlled)');
+    console.log("⏸️ Pausing video (timer-controlled)");
     this.isTimerControlledPause = true;
 
     if (this.videoController) {
@@ -544,60 +783,67 @@ class YouTubePomodoroTimer {
   }
 
   resumeVideo() {
-    console.log('▶️ Resuming video');
+    console.log("▶️ Resuming video");
 
     if (this.videoController) {
       this.videoController.resumeVideo();
     } else if (this.video && this.video.paused) {
       const playPromise = this.video.play();
       if (playPromise) {
-        playPromise.catch(error => {
-          console.log('Autoplay blocked, user needs to click play');
+        playPromise.catch((error) => {
+          console.log("Autoplay blocked, user needs to click play");
         });
       }
     }
   }
 
   async handleMessage(message, sender, sendResponse) {
-    console.log('📨 Content script received:', message.type);
+    console.log("📨 Content script received:", message.type);
 
     switch (message.type) {
-      case 'TIMER_TICK':
+      case "TIMER_TICK":
         this.timerState = {
           isActive: true,
           mode: message.mode,
           remainingTime: message.remainingTime,
           sessionCount: message.sessionCount,
-          isPaused: message.isPaused || false
+          isPaused: message.isPaused || false,
         };
-        this.updateOverlay(message.remainingTime, message.mode, message.sessionCount, message.isPaused);
+        this.updateOverlay(
+          message.remainingTime,
+          message.mode,
+          message.sessionCount,
+          message.isPaused
+        );
         break;
 
-      case 'WORK_TIMER_FINISHED':
-        console.log('⏰ Work session complete - starting break');
+      case "WORK_TIMER_FINISHED":
+        console.log("⏰ Work session complete - starting break");
         this.pauseVideo();
         this.startBreakTimer();
         break;
 
-      case 'BREAK_TIMER_FINISHED':
-        console.log('☕ Break complete - showing choice notification');
-        // CHANGED: Don't auto-resume, show choice instead
+      case "BREAK_TIMER_FINISHED":
+        console.log("☕ Break complete - showing choice notification");
         this.showBreakEndChoice();
         break;
 
-      case 'FORCE_RESUME':
-        console.log('🔴 Force resume');
+      case "FORCE_RESUME":
+        console.log("🔴 Force resume");
         this.resumeVideo();
         this.hideOverlay();
         this.hasStartedInitialTimer = false;
         break;
 
-      case 'MANUAL_LECTURE_TOGGLE':
-        console.log('📚 Manual lecture toggle:', message.isLecture);
+      case "MANUAL_LECTURE_TOGGLE":
+        console.log("📚 Manual lecture toggle:", message.isLecture);
         this.isLecture = message.isLecture;
 
         if (message.isLecture) {
           this.lectureDetector.markAsLecture();
+          // Reset user preferences for manual toggle
+          this.userHasCancelled = false;
+          this.userHasStopped = false;
           this.hasShownNotification = false;
           this.showLectureDetectedNotification();
         } else {
@@ -610,22 +856,29 @@ class YouTubePomodoroTimer {
   }
 
   startBreakTimer() {
-    chrome.runtime.sendMessage({ type: 'START_BREAK_TIMER' }).then(async response => {
-      if (response?.success) {
-        console.log('☕ Break timer started');
-        await this.syncTimerState();
-        this.showOverlay('break');
-      }
-    });
+    chrome.runtime
+      .sendMessage({ type: "START_BREAK_TIMER" })
+      .then(async (response) => {
+        if (response?.success) {
+          console.log("☕ Break timer started");
+          await this.syncTimerState();
+          // Show in same state (mini or full) as work session
+          if (this.isMinimized) {
+            this.showMiniOverlay("break");
+          } else {
+            this.showOverlay("break");
+          }
+        }
+      });
   }
 
   injectCSS() {
-    if (document.getElementById('pomodoro-css-injected')) return;
+    if (document.getElementById("pomodoro-css-injected")) return;
 
-    const style = document.createElement('style');
-    style.id = 'pomodoro-css-injected';
+    const style = document.createElement("style");
+    style.id = "pomodoro-css-injected";
     style.textContent = `
-      /* Existing styles... */
+      /* Existing notification styles */
       #pomodoro-lecture-notification {
         position: fixed !important;
         top: 20px !important;
@@ -641,7 +894,77 @@ class YouTubePomodoroTimer {
         animation: slideInRight 0.3s ease-out !important;
       }
 
-      /* NEW: Break end notification styles */
+      /* NEW: Mini overlay styles */
+      .pomodoro-mini-overlay {
+        position: fixed !important;
+        top: 20px !important;
+        right: 20px !important;
+        background: rgba(0, 0, 0, 0.8) !important;
+        backdrop-filter: blur(8px) !important;
+        border-radius: 12px !important;
+        padding: 8px 12px !important;
+        z-index: 999999 !important;
+        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        color: white !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+        border: 2px solid rgba(255, 255, 255, 0.2) !important;
+        animation: miniSlideIn 0.3s ease-out !important;
+        min-width: 80px !important;
+      }
+
+      .pomodoro-mini-overlay:hover {
+        transform: scale(1.05) !important;
+        background: rgba(0, 0, 0, 0.9) !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+      }
+
+      .pomodoro-mini-overlay.paused {
+        opacity: 0.7 !important;
+        animation: pulse 2s infinite !important;
+      }
+
+      .pomodoro-mini-work { border-left: 3px solid #4CAF50 !important; }
+      .pomodoro-mini-break { border-left: 3px solid #FF9800 !important; }
+
+      .mini-timer-content {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        font-size: 14px !important;
+      }
+
+      .mini-mode-icon {
+        font-size: 16px !important;
+        line-height: 1 !important;
+      }
+
+      .mini-time {
+        font-weight: 700 !important;
+        font-family: 'Monaco', monospace !important;
+        font-size: 13px !important;
+        transition: opacity 0.3s ease !important;
+      }
+
+      .mini-progress {
+        position: absolute !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: 3px !important;
+        background: rgba(255, 255, 255, 0.2) !important;
+        border-radius: 0 0 10px 10px !important;
+        overflow: hidden !important;
+      }
+
+      .mini-progress-fill {
+        height: 100% !important;
+        width: 0% !important;
+        background: linear-gradient(90deg, #4CAF50, #45a049) !important;
+        transition: width 0.5s ease !important;
+      }
+
+      /* Break end notification styles */
       #pomodoro-break-end-notification {
         position: fixed !important;
         top: 50% !important;
@@ -684,11 +1007,6 @@ class YouTubePomodoroTimer {
         background: rgba(255, 255, 255, 0.15) !important;
         border-radius: 8px !important;
         border: 1px solid rgba(255, 255, 255, 0.2) !important;
-      }
-
-      .break-end-countdown p {
-        margin: 0 !important;
-        font-weight: 600 !important;
       }
 
       #break-countdown {
@@ -742,7 +1060,7 @@ class YouTubePomodoroTimer {
         box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4) !important;
       }
 
-      /* Completion message styles */
+      /* Completion message */
       #pomodoro-completion-message {
         position: fixed !important;
         top: 50% !important;
@@ -778,7 +1096,7 @@ class YouTubePomodoroTimer {
         line-height: 1.5 !important;
       }
 
-      /* Existing overlay styles */
+      /* Full overlay styles */
       .pomodoro-overlay {
         position: fixed !important;
         top: 20px !important;
@@ -796,7 +1114,6 @@ class YouTubePomodoroTimer {
         transition: all 0.3s ease !important;
       }
 
-      .pomodoro-overlay.minimized { transform: scale(0.7) !important; opacity: 0.7 !important; }
       .pomodoro-work { border-left: 4px solid #4CAF50 !important; }
       .pomodoro-break { border-left: 4px solid #FF9800 !important; }
 
@@ -909,11 +1226,21 @@ class YouTubePomodoroTimer {
         to { transform: translateX(0); opacity: 1; }
       }
 
+      @keyframes miniSlideIn {
+        from { transform: translateX(100%) scale(0.5); opacity: 0; }
+        to { transform: translateX(0) scale(1); opacity: 1; }
+      }
+
       @keyframes bounceIn {
         0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
         50% { transform: translate(-50%, -50%) scale(1.05); }
         70% { transform: translate(-50%, -50%) scale(0.9); }
         100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 0.7; }
+        50% { opacity: 0.9; }
       }
     `;
 
@@ -925,14 +1252,21 @@ class YouTubePomodoroTimer {
     const observer = new MutationObserver(() => {
       if (location.href !== currentUrl) {
         currentUrl = location.href;
-        if (currentUrl.includes('/watch')) {
-          console.log('🔄 YouTube navigation - resetting state');
+        if (currentUrl.includes("/watch")) {
+          console.log("🔄 YouTube navigation - resetting ALL user preferences");
+
+          // Complete reset on navigation
           this.hideOverlay();
           this.removeBreakEndNotification();
           this.isLecture = false;
           this.hasShownNotification = false;
           this.hasStartedInitialTimer = false;
           this.autoStartEnabled = true;
+
+          // FIXED: Reset user preferences on navigation
+          this.userHasCancelled = false;
+          this.userHasStopped = false;
+          this.sessionWasManuallyStarted = false;
 
           setTimeout(async () => {
             await this.waitForVideo();
@@ -947,5 +1281,5 @@ class YouTubePomodoroTimer {
 }
 
 // Initialize
-console.log('🍅 Starting FINAL YouTube Pomodoro Timer with break choice...');
+console.log("🍅 Starting ULTIMATE YouTube Pomodoro Timer...");
 new YouTubePomodoroTimer();
