@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Pomodoro Timer",
+  "version": "1.0.0",
+  "description": "Enhance learning with Pomodoro technique on YouTube lectures",
+  "permissions": [
+    "storage",
+    "notifications",
+    "scripting",
+    "activeTab",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/watch*"],
+      "js": ["utils/lecture-detector.js", "utils/video-control.js", "content.js"],
+      "css": ["overlay/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "YouTube Pomodoro Timer",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "48": "assets/icons/icon-48.png", 
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["overlay/*", "assets/*"],
+      "matches": ["https://www.youtube.com/*"]
+    }
+  ]
+}

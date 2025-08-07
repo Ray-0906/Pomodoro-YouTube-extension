@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Pomodoro Timer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <div class="popup-header">
+      <div class="logo">
+        🍅 <span>Pomodoro Timer</span>
+      </div>
+      <div class="status-indicator" id="status-indicator">
+        <span class="status-dot"></span>
+        <span id="status-text">Ready</span>
+      </div>
+    </div>
+
+    <!-- Current Session Display -->
+    <div class="current-session" id="current-session" style="display: none;">
+      <div class="timer-display">
+        <div class="mode-badge" id="mode-badge">Focus</div>
+        <div class="time-display" id="time-display">20:00</div>
+        <div class="session-count" id="session-count">Session 1</div>
+      </div>
+
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+
+      <div class="session-controls">
+        <button class="btn btn-secondary" id="pause-btn">Pause</button>
+        <button class="btn btn-danger" id="stop-btn">Stop Session</button>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions" id="quick-actions">
+      <button class="btn btn-primary btn-large" id="start-focus-btn">
+        <span class="btn-icon">🎯</span>
+        Start Focus Session
+      </button>
+
+      <div class="action-grid">
+        <button class="btn btn-outline" id="manual-lecture-btn">
+          <span class="btn-icon">📚</span>
+          Mark as Lecture
+        </button>
+        <button class="btn btn-outline" id="settings-btn">
+          <span class="btn-icon">⚙️</span>
+          Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- Statistics Section -->
+    <div class="stats-section" id="stats-section">
+      <h3>Today's Progress</h3>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span class="stat-number" id="sessions-today">0</span>
+          <span class="stat-label">Sessions</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-number" id="focus-time-today">0m</span>
+          <span class="stat-label">Focus Time</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-number" id="completion-rate">0%</span>
+          <span class="stat-label">Completion</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Panel (Hidden by default) -->
+    <div class="settings-panel" id="settings-panel" style="display: none;">
+      <div class="settings-header">
+        <h3>Settings</h3>
+        <button class="btn-close" id="close-settings">×</button>
+      </div>
+
+      <div class="settings-content">
+        <div class="setting-group">
+          <label for="work-duration">Work Session Duration</label>
+          <div class="input-group">
+            <input type="range" id="work-duration" min="15" max="60" value="20" step="5">
+            <span id="work-duration-value">20 min</span>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label for="break-duration">Break Duration</label>
+          <div class="input-group">
+            <input type="range" id="break-duration" min="5" max="15" value="5" step="1">
+            <span id="break-duration-value">5 min</span>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="auto-detect-lectures" checked>
+            <span class="checkmark"></span>
+            Auto-detect lectures
+          </label>
+        </div>
+
+        <div class="setting-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="enable-notifications" checked>
+            <span class="checkmark"></span>
+            Enable notifications
+          </label>
+        </div>
+
+        <div class="setting-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="auto-resume" checked>
+            <span class="checkmark"></span>
+            Auto-resume after breaks
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-footer">
+        <button class="btn btn-primary" id="save-settings">Save Settings</button>
+        <button class="btn btn-outline" id="reset-stats">Reset Statistics</button>
+      </div>
+    </div>
+
+    <!-- Current Video Info -->
+    <div class="video-info" id="video-info" style="display: none;">
+      <div class="video-details">
+        <div class="video-title" id="video-title">Loading...</div>
+        <div class="lecture-status" id="lecture-status">
+          <span class="status-icon">❓</span>
+          <span>Analyzing content...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="popup-footer">
+      <div class="tips" id="daily-tip">
+        💡 <span>Tip: Take regular breaks to maintain focus and prevent burnout!</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
