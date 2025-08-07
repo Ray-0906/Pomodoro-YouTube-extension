@@ -498,41 +498,57 @@ class PomodoroPopup {
   }
 
   // NEW: Update timer display with real-time info
-  updateTimerDisplay() {
-    if (!this.timerState || !this.timerState.isActive) return;
+// Add this to popup.js - Fix for showing correct focus time
 
-    const timeDisplay = document.getElementById('time-display');
-    const progressFill = document.getElementById('progress-fill');
-    const sessionCount = document.getElementById('session-count');
+// REPLACE the updateTimerDisplay method in popup.js with this:
 
-    if (this.timerState.remainingTime !== undefined) {
-      const minutes = Math.floor(this.timerState.remainingTime / 60000);
-      const seconds = Math.floor((this.timerState.remainingTime % 60000) / 1000);
-      const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+updateTimerDisplay() {
+  if (!this.timerState || !this.timerState.isActive) return;
 
-      if (timeDisplay) {
-        timeDisplay.textContent = timeString;
-        // Visual feedback for paused state
-        timeDisplay.style.opacity = this.timerState.isPaused ? '0.6' : '1';
-      }
+  const timeDisplay = document.getElementById('time-display');
+  const progressFill = document.getElementById('progress-fill');
+  const sessionCount = document.getElementById('session-count');
 
-      // Update progress
-      const totalDuration = this.timerState.mode === 'work' 
-        ? this.settings.workDuration * 60 * 1000 
-        : this.settings.breakDuration * 60 * 1000;
-      const progress = ((totalDuration - this.timerState.remainingTime) / totalDuration) * 100;
+  if (this.timerState.remainingTime !== undefined) {
+    const minutes = Math.floor(this.timerState.remainingTime / 60000);
+    const seconds = Math.floor((this.timerState.remainingTime % 60000) / 1000);
+    const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-      if (progressFill) {
-        progressFill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+    if (timeDisplay) {
+      // FIXED: Show actual remaining time, not mode name
+      timeDisplay.textContent = timeString;
+      timeDisplay.style.opacity = this.timerState.isPaused ? '0.6' : '1';
+
+      // Also update the title to show what type of session
+      const titleElement = timeDisplay.previousElementSibling;
+      if (titleElement) {
+        const sessionType = this.timerState.mode === 'work' ? 'Focus Time' : 'Break Time';
+        titleElement.textContent = sessionType;
       }
     }
 
-    // Update session count
-    if (sessionCount && this.timerState.sessionCount) {
-      const pausedText = this.timerState.isPaused ? ' (Paused)' : '';
-      sessionCount.textContent = `Session ${this.timerState.sessionCount}${pausedText}`;
+    // Update progress bar
+    const totalDuration = this.timerState.mode === 'work' 
+      ? this.settings.workDuration * 60 * 1000 
+      : this.settings.breakDuration * 60 * 1000;
+    const progress = ((totalDuration - this.timerState.remainingTime) / totalDuration) * 100;
+
+    if (progressFill) {
+      progressFill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
     }
   }
+
+  // Update session count
+  if (sessionCount && this.timerState.sessionCount) {
+    let statusText = `Session ${this.timerState.sessionCount}`;
+    if (this.timerState.isPaused) {
+      statusText += ' (Paused)';
+    } else if (this.timerState.mode === 'break') {
+      statusText = `Break after Session ${this.timerState.sessionCount}`;
+    }
+    sessionCount.textContent = statusText;
+  }
+}
 
   async checkCurrentTab() {
     try {
