@@ -75,13 +75,11 @@ class YouTubePomodoroTimer {
       console.log("🔄 Checking for page refresh scenario...");
 
       if (this.timerState?.isActive) {
-        console.log("⏱️ Active timer detected on page load:", {
-          mode: this.timerState.mode,
-          isPaused: this.timerState.isPaused,
-          remainingTime: Math.floor(this.timerState.remainingTime / 1000) + "s",
-        });
+        console.log("⏱️ Active timer detected on page load");
 
-        // Show overlay in current state
+        // Show overlay in current state - but start with full view on refresh
+        // (since we can't persist minimize state across page refresh easily)
+        this.isMinimized = false;
         this.showOverlay(this.timerState.mode);
 
         // Wait for video to be fully ready
@@ -97,7 +95,6 @@ class YouTubePomodoroTimer {
             }, Timer=${timerPaused ? "paused" : "running"}`
           );
 
-          // Case 1: Video playing but timer paused → Resume timer
           if (videoPlaying && timerPaused) {
             console.log(
               "🔄 Page refresh detected: Video playing but timer paused - resuming timer"
@@ -105,25 +102,20 @@ class YouTubePomodoroTimer {
             await chrome.runtime.sendMessage({ type: "RESUME_TIMER" });
             await this.syncTimerState();
             console.log("✅ Timer resumed after page refresh");
-          }
-          // Case 2: Video paused but timer running → Pause timer
-          else if (!videoPlaying && !timerPaused) {
+          } else if (!videoPlaying && !timerPaused) {
             console.log(
               "🔄 Page refresh detected: Video paused but timer running - pausing timer"
             );
             await chrome.runtime.sendMessage({ type: "PAUSE_TIMER" });
             await this.syncTimerState();
             console.log("✅ Timer paused after page refresh");
-          }
-          // Case 3: States already match
-          else {
+          } else {
             console.log(
               "✅ Timer-video sync already correct after page refresh"
             );
           }
         }
 
-        // Mark that we have a timer to prevent auto-start
         this.hasStartedInitialTimer = true;
       } else {
         console.log("ℹ️ No active timer on page load");
@@ -513,8 +505,20 @@ class YouTubePomodoroTimer {
       });
   }
 
+  // MODIFY the showOverlay method to respect minimize state:
   showOverlay(mode) {
-    console.log(`🎯 Showing ${mode} overlay`);
+    console.log(
+      `🎯 showOverlay called for ${mode}, isMinimized: ${this.isMinimized}`
+    );
+
+    // If currently minimized, show mini overlay instead
+    if (this.isMinimized) {
+      console.log("📱 Respecting minimize state - showing mini overlay");
+      this.showMiniOverlay(mode);
+      return;
+    }
+
+    console.log(`🎯 Showing full ${mode} overlay`);
 
     if (this.overlay) this.overlay.remove();
     if (this.miniOverlay) this.miniOverlay.remove();
@@ -537,51 +541,51 @@ class YouTubePomodoroTimer {
     const modeText = mode === "work" ? "🎯 Focus Time" : "☕ Break Time";
 
     this.overlay.innerHTML = `
-      <div class="timer-display">
-        <div class="mode-text">${modeText}</div>
-        <div class="time-remaining">${duration}</div>
-        <div class="progress-container">
-          <div class="progress-bar">
-            <div class="progress-fill"></div>
-          </div>
-        </div>
-        ${
-          mode === "work"
-            ? '<div class="session-info">Stay focused! 💪</div>'
-            : ""
-        }
-        ${
-          mode === "break"
-            ? `
-          <div class="break-actions">
-            <div class="break-message">Enjoy your break! 🧘‍♀️</div>
-            <div class="break-info">Next session will start automatically after break</div>
-          </div>
-        `
-            : ""
-        }
-        <div class="overlay-controls">
-          <button id="minimize-btn" class="control-btn" title="Minimize">−</button>
-          <button id="move-btn" class="control-btn" title="Move Position">⋯</button>
-          <button id="pause-resume-btn" class="control-btn" title="Pause/Resume">${
-            this.timerState?.isPaused ? "▶️" : "⏸️"
-          }</button>
-          <button id="stop-timer-btn" class="control-btn stop-btn" title="Stop Session">⏹</button>
+    <div class="timer-display">
+      <div class="mode-text">${modeText}</div>
+      <div class="time-remaining">${duration}</div>
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill"></div>
         </div>
       </div>
-    `;
+      ${
+        mode === "work"
+          ? '<div class="session-info">Stay focused! 💪</div>'
+          : ""
+      }
+      ${
+        mode === "break"
+          ? `
+        <div class="break-actions">
+          <div class="break-message">Enjoy your break! 🧘‍♀️</div>
+          <div class="break-info">Next session will start automatically after break</div>
+        </div>
+      `
+          : ""
+      }
+      <div class="overlay-controls">
+        <button id="minimize-btn" class="control-btn" title="Minimize">−</button>
+        <button id="move-btn" class="control-btn" title="Move Position">⋯</button>
+        <button id="pause-resume-btn" class="control-btn" title="Pause/Resume">${
+          this.timerState?.isPaused ? "▶️" : "⏸️"
+        }</button>
+        <button id="stop-timer-btn" class="control-btn stop-btn" title="Stop Session">⏹</button>
+      </div>
+    </div>
+  `;
 
     this.injectCSS();
     document.body.appendChild(this.overlay);
     this.setupOverlayControls(mode);
-    this.isMinimized = false;
+    // DON'T reset isMinimized here - let user control it
 
-    console.log("✅ Overlay displayed with current timer state");
+    console.log("✅ Full overlay displayed");
   }
 
   // NEW: Show minimized timer
   showMiniOverlay(mode) {
-    console.log("📱 Showing mini overlay");
+    console.log("📱 Showing mini overlay for", mode);
 
     if (this.overlay) this.overlay.remove();
     if (this.miniOverlay) this.miniOverlay.remove();
@@ -601,32 +605,33 @@ class YouTubePomodoroTimer {
     this.miniOverlay.id = "pomodoro-mini-overlay";
     this.miniOverlay.className = `pomodoro-mini-overlay pomodoro-mini-${mode}`;
     this.miniOverlay.innerHTML = `
-      <div class="mini-timer-content">
-        <div class="mini-mode-icon">${mode === "work" ? "🎯" : "☕"}</div>
-        <div class="mini-time">${duration}</div>
-        <div class="mini-progress">
-          <div class="mini-progress-fill"></div>
-        </div>
+    <div class="mini-timer-content">
+      <div class="mini-mode-icon">${mode === "work" ? "🎯" : "☕"}</div>
+      <div class="mini-time">${duration}</div>
+      <div class="mini-progress">
+        <div class="mini-progress-fill"></div>
       </div>
-    `;
+    </div>
+  `;
 
     this.injectCSS();
     document.body.appendChild(this.miniOverlay);
-    this.isMinimized = true;
+    this.isMinimized = true; // Ensure state is set
 
     // Click to expand
     this.miniOverlay.addEventListener("click", () => {
-      console.log("📱 Mini overlay clicked - expanding");
+      console.log("📱 Mini overlay clicked - expanding to full view");
+      this.isMinimized = false; // User explicitly chose to expand
       this.showOverlay(mode);
     });
 
-    console.log("✅ Mini overlay displayed");
+    console.log("✅ Mini overlay displayed, minimize state preserved");
   }
 
   setupOverlayControls(mode) {
-    // FIXED: Minimize button behavior
     document.getElementById("minimize-btn")?.addEventListener("click", () => {
-      console.log("📱 Minimize button clicked");
+      console.log("📱 Minimize button clicked - switching to mini view");
+      this.isMinimized = true; // User explicitly chose to minimize
       this.showMiniOverlay(mode);
     });
 
@@ -649,14 +654,15 @@ class YouTubePomodoroTimer {
         }, 100);
       });
 
-    // FIXED: Stop button sets user preference
     document.getElementById("stop-timer-btn")?.addEventListener("click", () => {
       if (confirm("Stop current session?")) {
-        console.log("⏹ User manually stopped session - setting stop flag");
-        this.userHasStopped = true; // Disable auto-start
+        console.log("⏹ User manually stopped session");
+        this.userHasStopped = true;
         chrome.runtime.sendMessage({ type: "STOP_TIMER" });
         this.hideOverlay();
         this.hasStartedInitialTimer = false;
+        // Reset minimize state when stopping
+        this.isMinimized = false;
       }
     });
   }
@@ -862,16 +868,20 @@ class YouTubePomodoroTimer {
         if (response?.success) {
           console.log("☕ Break timer started");
           await this.syncTimerState();
-          // Show in same state (mini or full) as work session
+
+          // Respect current minimize state
           if (this.isMinimized) {
+            console.log(
+              "☕ Starting break timer in mini view (user preference)"
+            );
             this.showMiniOverlay("break");
           } else {
+            console.log("☕ Starting break timer in full view");
             this.showOverlay("break");
           }
         }
       });
   }
-
   injectCSS() {
     if (document.getElementById("pomodoro-css-injected")) return;
 
@@ -1253,9 +1263,10 @@ class YouTubePomodoroTimer {
       if (location.href !== currentUrl) {
         currentUrl = location.href;
         if (currentUrl.includes("/watch")) {
-          console.log("🔄 YouTube navigation - resetting ALL user preferences");
+          console.log(
+            "🔄 YouTube navigation - resetting ALL state including minimize"
+          );
 
-          // Complete reset on navigation
           this.hideOverlay();
           this.removeBreakEndNotification();
           this.isLecture = false;
@@ -1263,10 +1274,11 @@ class YouTubePomodoroTimer {
           this.hasStartedInitialTimer = false;
           this.autoStartEnabled = true;
 
-          // FIXED: Reset user preferences on navigation
+          // Reset user preferences AND minimize state on navigation
           this.userHasCancelled = false;
           this.userHasStopped = false;
           this.sessionWasManuallyStarted = false;
+          this.isMinimized = false; // Reset minimize preference
 
           setTimeout(async () => {
             await this.waitForVideo();

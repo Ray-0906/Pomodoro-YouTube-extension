@@ -16,12 +16,12 @@ class LectureDetector {
       { word: 'seminar', weight: 3 },
 
       // Educational context terms (medium score)
-      { word: 'learn', weight: 2 },
-      { word: 'teach', weight: 2 },
+      { word: 'learn', weight: 4 },
+      { word: 'teach', weight: 4 },
       { word: 'education', weight: 2 },
-      { word: 'study', weight: 2 },
+      { word: 'study', weight: 4 },
       { word: 'explain', weight: 2 },
-      { word: 'guide', weight: 2 },
+      { word: 'guide', weight: 4 },
       { word: 'how to', weight: 2 },
       { word: 'introduction to', weight: 2 },
 
@@ -52,13 +52,13 @@ class LectureDetector {
       { name: 'College', weight: 3 },
       { name: 'Academy', weight: 3 },
       { name: 'Educational', weight: 3 },
-      { name: 'Learning', weight: 3 }
+      { name: 'Learning', weight: 4 }
     ];
 
     // Educational subject keywords
     this.educationalSubjects = [
-      { word: 'mathematics', weight: 3 },
-      { word: 'math', weight: 3 },
+      { word: 'mathematics', weight: 4 },
+      { word: 'math', weight: 4 },
       { word: 'calculus', weight: 3 },
       { word: 'algebra', weight: 3 },
       { word: 'geometry', weight: 3 },
@@ -66,16 +66,19 @@ class LectureDetector {
       { word: 'chemistry', weight: 3 },
       { word: 'biology', weight: 3 },
       { word: 'science', weight: 2 },
-      { word: 'programming', weight: 3 },
-      { word: 'computer science', weight: 3 },
-      { word: 'coding', weight: 2 },
-      { word: 'engineering', weight: 3 },
+      { word: 'programming', weight: 6 },
+      { word: 'computer science', weight: 6 },
+      { word: 'coding', weight: 6 },
+      { word: 'engineering', weight: 6 },
       { word: 'history', weight: 2 },
       { word: 'economics', weight: 2 },
       { word: 'psychology', weight: 2 },
       { word: 'philosophy', weight: 2 },
       { word: 'literature', weight: 2 },
-      { word: 'statistics', weight: 3 }
+      { word: 'statistics', weight: 3 },
+      { word: 'data science', weight: 4 },
+      { word: 'art', weight: 2 },
+      { word: 'Notes', weight: 6 },
     ];
 
     console.log('🎓 LectureDetector initialized with enhanced scoring');
